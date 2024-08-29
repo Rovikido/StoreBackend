@@ -1,8 +1,17 @@
 from django.db import models
-from django.contrib.auth.models import User
 from django.core.validators import MaxLengthValidator, MinValueValidator
-from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
-from django.contrib.contenttypes.models import ContentType
+from django.contrib.auth.models import AbstractUser
+
+
+class CustomerUserManager():
+    pass
+
+
+class CustomerUser(AbstractUser):
+    delivery_address = models.CharField(max_length=255, blank=True, null=True)
+
+    def __str__(self):
+        return self.username
 
 
 class ProductType(models.Model):
@@ -23,7 +32,7 @@ class Product(models.Model):
 
 
 class Cart(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=False)
+    user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE, null=False)
 
 
 class CartItem(models.Model):
