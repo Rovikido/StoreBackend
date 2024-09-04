@@ -19,11 +19,13 @@ def user(api_client):
 
 
 @pytest.fixture
-def customer_user():
-    return models.CustomerUser.objects.create_user(
+def customer_user(api_client):
+    user = models.CustomerUser.objects.create_user(
         username='testuser', email='testuser@example.com', password='testpassword',
         first_name='Test', last_name='User', delivery_address='123 Test Street'
     )
+    api_client.force_authenticate(user=user)
+    return user
 
 
 @pytest.fixture
@@ -132,8 +134,7 @@ class TestCartViewSet:
         url = reverse('Cart-list')
         response = api_client.get(url)
         assert response.status_code == status.HTTP_200_OK
-        print(response.data[0])
-        assert response.data[0]['user'] == user.id
+        assert response.data[0]['user'] == customer_user.id
 
     def test_create_cart(self, api_client, customer_user):
         url = reverse('Cart-list')
@@ -146,7 +147,6 @@ class TestCartViewSet:
     def test_retrieve_cart(self, api_client, cart):
         url = reverse('Cart-detail', args=[cart.id])
         response = api_client.get(url)
-        print(response)
         assert response.status_code == status.HTTP_200_OK
         assert response.data['user'] == cart.user.id
 
@@ -202,60 +202,58 @@ class TestCartItemViewSet:
         assert models.CartItem.objects.count() == 0
 
 
-# @pytest.mark.django_db
-# class TestUserViewSet:
+@pytest.mark.django_db
+class TestUserViewSet:
+    def test_create_user(self, api_client, customer_user):
+        url = reverse('User-list')
+        data = {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
+            'password': 'newpassword',
+            'first_name': 'New',
+            'last_name': 'User',
+            'delivery_address': '456 New Address'
+        }
+        response = api_client.post(url, data, format='json')
+        assert response.status_code == 201
+        assert models.CustomerUser.objects.count() == 2
+        assert models.CustomerUser.objects.get(username='newuser').email == 'newuser@example.com'
 
-#     def test_create_user(self, api_client, customer_user):
-#         url = reverse('User-list')
-#         data = {
-#             'username': 'newuser',
-#             'email': 'newuser@example.com',
-#             'password': 'newpassword',
-#             'first_name': 'New',
-#             'last_name': 'User',
-#             'delivery_address': '456 New Address'
-#         }
-#         response = api_client.post(url, data, format='json')
-#         assert response.status_code == 201
-#         assert models.CustomerUser.objects.count() == 2
-#         assert models.CustomerUser.objects.get(username='newuser').email == 'newuser@example.com'
+    def test_retrieve_user(self, api_client, customer_user):
+        api_client.force_authenticate(user=customer_user)
+        url = reverse('User-detail', args=[customer_user.id])
+        response = api_client.get(url)
+        assert response.status_code == 200
+        assert response.data['username'] == customer_user.username
 
-#     def test_retrieve_user(self, api_client, customer_user):
-#         api_client.force_authenticate(user=customer_user)
-#         url = reverse('User-detail', args=[customer_user.id])
-#         response = api_client.get(url)
-#         assert response.status_code == 200
-#         assert response.data['username'] == customer_user.username
+    def test_update_user(self, api_client, customer_user):
+        api_client.force_authenticate(user=customer_user)
+        url = reverse('User-detail', args=[customer_user.id])
+        data = {
+            'first_name': 'Updated',
+            'last_name': 'User',
+            'delivery_address': '789 Updated Address'
+        }
+        response = api_client.patch(url, data, format='json')
+        assert response.status_code == 200
+        customer_user.refresh_from_db()
+        assert customer_user.first_name == 'Updated'
+        assert customer_user.delivery_address == '789 Updated Address'
 
-#     def test_update_user(self, api_client, customer_user):
-#         api_client.force_authenticate(user=customer_user)
-#         url = reverse('User-detail', args=[customer_user.id])
-#         data = {
-#             'first_name': 'Updated',
-#             'last_name': 'User',
-#             'delivery_address': '789 Updated Address'
-#         }
-#         response = api_client.patch(url, data, format='json')
-#         assert response.status_code == 200
-#         customer_user.refresh_from_db()
-#         assert customer_user.first_name == 'Updated'
-#         assert customer_user.delivery_address == '789 Updated Address'
+    def test_update_password(self, api_client, customer_user):
+        api_client.force_authenticate(user=customer_user)
+        url = reverse('User-detail', args=[customer_user.id])
+        data = {'password': 'newpassword'}
+        response = api_client.patch(url, data, format='json')
+        assert response.status_code == 200
 
-#     def test_update_password(self, api_client, customer_user):
-#         api_client.force_authenticate(user=customer_user)
-#         url = reverse('User-detail', args=[customer_user.id])
-#         data = {'password': 'newpassword'}
-#         response = api_client.patch(url, data, format='json')
-#         assert response.status_code == 200
+        # api_client.logout() TODO
+        # login_response = api_client.post(reverse('User-login'), {'username': customer_user.username, 'password': 'newpassword'})
+        # assert login_response.status_code == 200
 
-#         api_client.logout()
-#         login_url = reverse('login')
-#         login_response = api_client.post(login_url, {'username': customer_user.username, 'password': 'newpassword'})
-#         assert login_response.status_code == 200
-
-#     def test_delete_user(self, api_client, customer_user):
-#         api_client.force_authenticate(user=customer_user)
-#         url = reverse('User-detail', args=[customer_user.id])
-#         response = api_client.delete(url)
-#         assert response.status_code == 204
-#         assert models.CustomerUser.objects.count() == 0
+    def test_delete_user(self, api_client, customer_user):
+        api_client.force_authenticate(user=customer_user)
+        url = reverse('User-detail', args=[customer_user.id])
+        response = api_client.delete(url)
+        assert response.status_code == 204
+        assert models.CustomerUser.objects.count() == 0
