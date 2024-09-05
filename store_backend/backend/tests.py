@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from django.contrib.auth.models import User
 import backend.models as models
+from rest_framework.authtoken.models import Token
 from django.urls import reverse
 
 
@@ -203,7 +204,7 @@ class TestCartItemViewSet:
 
 
 @pytest.mark.django_db
-class TestUserViewSet:
+class TestUserViewSetGeneral:
     def test_create_user(self, api_client, customer_user):
         url = reverse('User-list')
         data = {
@@ -240,6 +241,36 @@ class TestUserViewSet:
         assert customer_user.first_name == 'Updated'
         assert customer_user.delivery_address == '789 Updated Address'
 
+    def test_delete_user(self, api_client, customer_user):
+        api_client.force_authenticate(user=customer_user)
+        url = reverse('User-detail', args=[customer_user.id])
+        response = api_client.delete(url)
+        assert response.status_code == 204
+        assert models.CustomerUser.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestUserViewSetAuth:
+    def test_register(self, api_client):
+        url = reverse('User-register')
+        data = {
+            'username': 'testuser',
+            'email': 'testuser@example.com',
+            'password': 'testpass123',
+            'first_name': 'Test',
+            'last_name': 'User',
+            'delivery_address': '123 Test St'
+        }
+        response = api_client.post(url, data, format='json')
+
+        assert response.status_code == status.HTTP_201_CREATED
+
+        user = models.CustomerUser.objects.get(email='testuser@example.com')
+        assert user.username == 'testuser'
+        assert user.first_name == 'Test'
+        assert user.last_name == 'User'
+        assert user.delivery_address == '123 Test St'
+
     def test_update_password(self, api_client, customer_user):
         api_client.force_authenticate(user=customer_user)
         url = reverse('User-change-password')
@@ -251,9 +282,16 @@ class TestUserViewSet:
         login_response = api_client.post(reverse('User-login'), {'username': customer_user.username, 'password': 'newpassword'} , format='json')
         assert login_response.status_code == 200
 
-    def test_delete_user(self, api_client, customer_user):
-        api_client.force_authenticate(user=customer_user)
-        url = reverse('User-detail', args=[customer_user.id])
-        response = api_client.delete(url)
-        assert response.status_code == 204
-        assert models.CustomerUser.objects.count() == 0
+    def test_login(self, api_client, customer_user):
+        url = reverse('User-login')
+        data = {
+            'username': customer_user.username,
+            'password': 'testpassword'
+        }
+        response = api_client.post(url, data, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+
+        response_data = response.json()
+        assert 'token' in response_data
+        assert response_data['user']['username'] == customer_user.username

@@ -13,6 +13,7 @@ from django.contrib.auth import update_session_auth_hash
 import backend.serializers as serializers
 from .models import CustomerUser
 from .serializers import UserSerializer
+from .permissions import IsAdminOrSelf
 
 
 
@@ -55,7 +56,6 @@ class CartViewSet(mixins.CreateModelMixin,
         """
         Saves the cart with the current user.
         """
-        #TODO: transform os only one cart exists and gets automaticly created
         user_id = self.request.user.id
         user_obj = CustomerUser.objects.get(pk=user_id)
         serializer.save(user=user_obj)
@@ -93,9 +93,13 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'login', 'register']:
             return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+        elif self.action == 'list':
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated(), IsAdminOrSelf()]
 
     def get_queryset(self):
+        if self.request.user.is_staff:
+            return CustomerUser.objects.all()
         return CustomerUser.objects.filter(id=self.request.user.id)
 
     def partial_update(self, request, *args, **kwargs):
@@ -124,7 +128,6 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='login')
     def login(self, request):
         serializer = serializers.UserLoginSerializer(data=request.data)
-        
         if serializer.is_valid():
             username = serializer.data.get('username')
             password = serializer.data.get('password')
@@ -138,8 +141,8 @@ class UserViewSet(viewsets.ModelViewSet):
                 }, status=status.HTTP_200_OK)
             return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=False, methods=['post'], url_path='change-password', permission_classes=[IsAuthenticated])
+
+    @action(detail=False, methods=['post'], url_path='change-password', permission_classes=[permissions.IsAuthenticated])
     def change_password(self, request):
         user = request.user
         serializer = serializers.ChangePasswordSerializer(data=request.data, context={'request': request})
@@ -149,3 +152,7 @@ class UserViewSet(viewsets.ModelViewSet):
             update_session_auth_hash(request, user)
             return Response({'status': 'password_changed'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='username')
+    def get_username(self, request):
+        return Response({'username': request.user.username}, status=status.HTTP_200_OK)
