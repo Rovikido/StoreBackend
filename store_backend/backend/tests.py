@@ -242,14 +242,14 @@ class TestUserViewSet:
 
     def test_update_password(self, api_client, customer_user):
         api_client.force_authenticate(user=customer_user)
-        url = reverse('User-detail', args=[customer_user.id])
-        data = {'password': 'newpassword'}
-        response = api_client.patch(url, data, format='json')
+        url = reverse('User-change-password')
+        data = {'old_password': 'testpassword', 'new_password': 'newpassword', 'confirm_new_password': 'newpassword'}
+        response = api_client.post(url, data, format='json')
         assert response.status_code == 200
 
-        # api_client.logout() TODO
-        # login_response = api_client.post(reverse('User-login'), {'username': customer_user.username, 'password': 'newpassword'})
-        # assert login_response.status_code == 200
+        api_client.logout()
+        login_response = api_client.post(reverse('User-login'), {'username': customer_user.username, 'password': 'newpassword'} , format='json')
+        assert login_response.status_code == 200
 
     def test_delete_user(self, api_client, customer_user):
         api_client.force_authenticate(user=customer_user)

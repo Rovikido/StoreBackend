@@ -7,6 +7,8 @@ from rest_framework.decorators import action
 from django.contrib.auth import authenticate, login
 from rest_framework.authtoken.models import Token
 from rest_framework import permissions
+from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth import update_session_auth_hash
 
 import backend.serializers as serializers
 from .models import CustomerUser
@@ -96,6 +98,17 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return CustomerUser.objects.filter(id=self.request.user.id)
 
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        user = self.request.user
+        serializer = self.get_serializer(user, data=request.data, partial=kwargs.get('partial', False))
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'], url_path='register')
     def register(self, request):
         serializer = serializers.UserRegistrationSerializer(data=request.data)
@@ -113,7 +126,6 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = serializers.UserLoginSerializer(data=request.data)
         
         if serializer.is_valid():
-            print(serializer.data)
             username = serializer.data.get('username')
             password = serializer.data.get('password')
             user = authenticate(request, username=username, password=password)
@@ -125,4 +137,15 @@ class UserViewSet(viewsets.ModelViewSet):
                     'token': token.key
                 }, status=status.HTTP_200_OK)
             return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], url_path='change-password', permission_classes=[IsAuthenticated])
+    def change_password(self, request):
+        user = request.user
+        serializer = serializers.ChangePasswordSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+            update_session_auth_hash(request, user)
+            return Response({'status': 'password_changed'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
